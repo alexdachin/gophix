@@ -1,18 +1,22 @@
 package main
 
 import (
-	"github.com/alexdachin/google-photos-import/utils/albums"
-	"github.com/alexdachin/google-photos-import/utils/media"
-	"github.com/schollz/progressbar/v3"
+	"fmt"
+	"github.com/alexdachin/google-photos-fix/utils/albums"
+	"github.com/alexdachin/google-photos-fix/utils/extensions"
+	"github.com/alexdachin/google-photos-fix/utils/media"
+	"github.com/alexdachin/google-photos-fix/utils/metadata"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
 func main() {
-	path := "/Users/alexdachin/Downloads/Takeout/Google Photos/"
-	newPath := "/Users/alexdachin/Downloads/Takeout/Google Photos Fixed/"
+	if len(os.Args) < 2 {
+		log.Fatal("Please provide the path to the Google Photos export directory as an argument.")
+	}
+
+	path := os.Args[1]
 	albumEntries, err := albums.Get(path)
 	if err != nil {
 		log.Fatal(err)
@@ -20,56 +24,44 @@ func main() {
 
 	for _, album := range albumEntries {
 		albumPath := filepath.Join(path, album)
-		newAlbumPath := filepath.Join(newPath, album)
-		err := os.MkdirAll(newAlbumPath, 0755)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("📓 Processing album:", album)
-		processAlbum(albumPath, newAlbumPath)
+		fmt.Println("📓 processing album:", album)
+		processAlbum(albumPath)
 	}
 }
 
-func processAlbum(albumPath string, newAlbumPath string) {
+func processAlbum(albumPath string) {
 	files, err := media.Get(albumPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	bar := progressbar.Default(int64(len(files)))
 	for mediaFile, jsonFile := range files {
 		mediaPath := filepath.Join(albumPath, mediaFile)
 		jsonPath := filepath.Join(albumPath, jsonFile)
-		newMediaPath := filepath.Join(newAlbumPath, mediaFile)
 
-		cmd := exec.Command(
-			"exiftool",
-			"-d",
-			"%s",
-			"-TagsFromFile",
-			jsonPath,
-			"-Title<Title",
-			"-Description<Description",
-			"-ImageDescription<Description",
-			"-Caption-Abstract<Description",
-			"-AllDates<PhotoTakenTimeTimestamp",
-			"-GPSAltitude<GeoDataAltitude",
-			"-GPSLatitude<GeoDataLatitude",
-			"-GPSLatitudeRef<GeoDataLatitude",
-			"-GPSLongitude<GeoDataLongitude",
-			"-GPSLongitudeRef<GeoDataLongitude",
-			"-o",
-			newMediaPath,
-			mediaPath,
-		)
-
-		data, err := cmd.CombinedOutput()
+		newMediaPath, err := extensions.Fix(mediaPath)
 		if err != nil {
-			log.Println("🚨 Error processing file:", mediaFile)
-			log.Println("➡️", cmd.String())
-			log.Println("ℹ️", string(data))
+			fmt.Printf("🚨 extension for file %s could not be fixed: %s\n", mediaPath, err)
+			continue
 		}
 
-		_ = bar.Add(1)
+		err = metadata.Apply(newMediaPath, jsonPath)
+		if err != nil {
+			fmt.Printf("🚨 metadata for file %s could not be applied: %s\n", newMediaPath, err)
+			continue
+		}
+	}
+
+	for _, jsonFile := range files {
+		jsonPath := filepath.Join(albumPath, jsonFile)
+		err := os.Remove(jsonPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// file was already removed
+				continue
+			}
+
+			fmt.Printf("🚨 json file %s could not be removed: %s\n", jsonPath, err)
+		}
 	}
 }
