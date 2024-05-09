@@ -50,9 +50,12 @@ func areExtensionsCompatible(ext1 string, ext2 string) bool {
 		return true
 	}
 
+	// gophix aims to keep the file names as they are if possible, so if exiftool outputs
+	// $FileTypeExtension for a .jpeg file to be .jpg, gophix will not rename it
 	compatibleExtensions := map[string]string{
 		".jpg": ".jpeg",
 		".tif": ".tiff",
+		".m4v": ".mp4",
 		".mov": ".mp4",
 	}
 

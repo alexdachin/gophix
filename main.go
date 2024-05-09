@@ -2,22 +2,27 @@ package main
 
 import (
 	"fmt"
-	"github.com/alexdachin/google-photos-fix/utils/albums"
-	"github.com/alexdachin/google-photos-fix/utils/extensions"
-	"github.com/alexdachin/google-photos-fix/utils/media"
-	"github.com/alexdachin/google-photos-fix/utils/metadata"
+	"github.com/alexdachin/gophix/utils/extensions"
+	"github.com/alexdachin/gophix/utils/files"
+	"github.com/alexdachin/gophix/utils/metadata"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("Please provide the path to the Google Photos export directory as an argument.")
-	}
+const (
+	OperationFix       = "fix"
+	OperationCleanJson = "clean-json"
+)
 
-	path := os.Args[1]
-	albumEntries, err := albums.Get(path)
+func init() {
+	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
+}
+
+func main() {
+	operation, path := getArgs()
+	albumEntries, err := files.GetAlbums(path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -25,17 +30,43 @@ func main() {
 	for _, album := range albumEntries {
 		albumPath := filepath.Join(path, album)
 		fmt.Println("📓 processing album:", album)
-		processAlbum(albumPath)
+
+		switch operation {
+		case OperationFix:
+			fixAlbum(albumPath)
+		case OperationCleanJson:
+			cleanAlbumJson(albumPath)
+		}
 	}
 }
 
-func processAlbum(albumPath string) {
-	files, err := media.Get(albumPath)
+func getArgs() (string, string) {
+	help := `Usage: gophix <operation> <path>
+
+Supported operations:
+$ gophix fix /path/to/takeout
+$ gophix clean-json /path/to/takeout
+
+`
+
+	if len(os.Args) < 3 {
+		log.Fatal(help)
+	}
+
+	if os.Args[1] != OperationFix && os.Args[1] != OperationCleanJson {
+		log.Fatalf("Operation %s is not supported.\n\n%s", os.Args[1], help)
+	}
+
+	return os.Args[1], os.Args[2]
+}
+
+func fixAlbum(albumPath string) {
+	filesMap, err := files.GetMedia(albumPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for mediaFile, jsonFile := range files {
+	for mediaFile, jsonFile := range filesMap {
 		mediaPath := filepath.Join(albumPath, mediaFile)
 		jsonPath := filepath.Join(albumPath, jsonFile)
 
@@ -51,17 +82,24 @@ func processAlbum(albumPath string) {
 			continue
 		}
 	}
+}
 
-	for _, jsonFile := range files {
-		jsonPath := filepath.Join(albumPath, jsonFile)
-		err := os.Remove(jsonPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				// file was already removed
-				continue
+func cleanAlbumJson(albumPath string) {
+	entries, err := os.ReadDir(albumPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if strings.EqualFold(filepath.Ext(entry.Name()), ".json") {
+			err := os.Remove(filepath.Join(albumPath, entry.Name()))
+			if err != nil {
+				log.Fatal(err)
 			}
-
-			fmt.Printf("🚨 json file %s could not be removed: %s\n", jsonPath, err)
 		}
 	}
 }

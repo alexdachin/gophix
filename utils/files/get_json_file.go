@@ -1,7 +1,8 @@
-package media
+package files
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -40,12 +41,18 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error
 		}
 	}
 
-	if strings.HasSuffix(mediaFile, ".MP4") {
-		extensions := [...]string{".jpg", ".jpeg", ".heic", ".JPG", ".JPEG", ".HEIC"}
+	mediaExt := filepath.Ext(mediaFile)
+	if strings.EqualFold(mediaExt, ".mp4") {
+		baseMediaFile := strings.TrimSuffix(mediaFile, mediaExt)
+		extensions := [...]string{".jpg", ".jpeg", ".heic"}
 		for _, ext := range extensions {
-			jsonFile := mediaFile[:len(mediaFile)-4] + ext + ".json"
+			jsonFile := baseMediaFile + ext + ".json"
+			jsonFileUpper := baseMediaFile + strings.ToUpper(ext) + ".json"
 			if _, ok := jsonFiles[jsonFile]; ok {
 				return jsonFile, nil
+			}
+			if _, ok := jsonFiles[jsonFileUpper]; ok {
+				return jsonFileUpper, nil
 			}
 		}
 	}

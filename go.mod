@@ -1,3 +1,3 @@
-module github.com/alexdachin/google-photos-fix
+module github.com/alexdachin/gophix
 
 go 1.22.2
